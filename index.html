@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Eniola · Get to know me</title>
+    <meta name="description" content="This isn’t a résumé, and it definitely isn’t a highlight reel dressed up to impress you." />
+    <meta name="theme-color" content="#fdf7ef" />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="Eniola · Get to know me" />
+    <meta property="og:description" content="The version of me you’d get after three good conversations: the real one, minus the small talk." />
+    <meta property="og:image" content="/images/og-image.jpg" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300..600;1,9..144,300..600&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400&family=Caveat:wght@500&display=swap"
+    />
+  </head>
+  <body>
+    <a class="skip-link" href="#overlay">Skip to content</a>
+
+    <!-- 3D layer (decorative; all copy also lives in the HTML overlay) -->
+    <canvas id="webgl" aria-hidden="true"></canvas>
+
+    <!-- Loader -->
+    <div id="loader" role="status" aria-live="polite">
+      <div class="loader__count" aria-label="Loading"><span>0</span></div>
+      <div class="loader__label">A warm hello</div>
+    </div>
+
+    <!-- Reduced-motion / transition veil -->
+    <div id="veil" aria-hidden="true"></div>
+
+    <!-- Fixed UI -->
+    <header id="nav"></header>
+    <div id="progress" aria-hidden="true"></div>
+    <div id="cursor" aria-hidden="true"><div class="cursor__ring"><span></span></div><div class="cursor__dot"></div></div>
+    <div id="toast" role="status" aria-live="polite"></div>
+
+    <!-- Text overlay: semantic content, synced to the camera -->
+    <main id="overlay" tabindex="-1"></main>
+
+    <!-- The scroll track: an empty tall div that drives the master timeline -->
+    <div id="scroll-track" aria-hidden="true"></div>
+
+    <noscript>
+      <p style="padding:2rem;color:#281c18;background:#fdf7ef;font-family:sans-serif">
+        This site is best experienced with JavaScript enabled.
+      </p>
+    </noscript>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
