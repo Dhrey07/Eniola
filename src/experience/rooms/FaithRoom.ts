@@ -60,7 +60,7 @@ export class FaithRoom extends Room {
         uniforms: {
           uTime: globals.uTime,
           uSize: { value: 3.2 },
-          uPixelRatio: { value: quality.dpr },
+          uPixelRatio: globals.uPixelRatio,
           uDrift: { value: quality.reduced ? 0 : 0.6 },
           uColor: { value: new THREE.Color('#c99a52') },
           uOpacity: { value: 0 },

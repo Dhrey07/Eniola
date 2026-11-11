@@ -26,16 +26,21 @@ void main() {
   float b = texture2D(uMap, uv - vec2(0.0, shift)).b;
   vec3 col = vec3(r, c.g, b);
 
-  // noise-edged reveal wipe (bottom → top)
-  float n = fbm(vUv * 5.0 + uSeed * 13.7);
-  float edge = vUv.y * 0.8 + n * 0.3;
-  float m = smoothstep(edge - 0.06, edge, uReveal * 1.15);
+  // noise-edged reveal wipe (bottom → top). Once uReveal reaches 1 the wipe is
+  // complete for every pixel (edge <= 1.1 < 1.15, so m = 1 and rim = 0): skip the fbm.
+  float m = 1.0;
+  float rim = 0.0;
+  if (uReveal < 1.0) {
+    float n = fbm(vUv * 5.0 + uSeed * 13.7);
+    float edge = vUv.y * 0.8 + n * 0.3;
+    m = smoothstep(edge - 0.06, edge, uReveal * 1.15);
+    // warm glow on the wipe edge
+    rim = m - smoothstep(edge, edge + 0.04, uReveal * 1.15);
+  }
 
   float g = dot(col, vec3(0.299, 0.587, 0.114));
   col = mix(vec3(g), col, uSaturation);
   col *= uTint;
-  // warm glow on the wipe edge
-  float rim = smoothstep(edge - 0.06, edge, uReveal * 1.15) - smoothstep(edge, edge + 0.04, uReveal * 1.15);
   col += vec3(0.83, 0.66, 0.29) * rim * 0.9;
 
   // fog in display space (before the inverse tone map), so photos keep their contrast

@@ -251,7 +251,9 @@ a {
 }
 .wi {
   display: inline-block;
-  will-change: transform;
+  /* no permanent will-change: several hundred words would each hold a compositor
+     layer for the whole visit. GSAP promotes a word (translate3d) only while its
+     reveal is in flight and drops the layer when it lands. */
 }
 
 .pull {
@@ -692,8 +694,13 @@ a {
 
 /* Cursor */
 #cursor {
+  /* a zero-size anchor instead of a full-viewport box: the difference blend now
+     only covers the dot and ring (same pixels, same look), not the whole canvas */
   position: fixed;
-  inset: 0;
+  left: 0;
+  top: 0;
+  width: 0;
+  height: 0;
   z-index: 100;
   pointer-events: none;
   mix-blend-mode: difference;
@@ -709,6 +716,7 @@ a {
   left: 0;
   top: 0;
   border-radius: 50%;
+  will-change: transform;
 }
 .cursor__dot {
   width: 10px;
@@ -816,7 +824,8 @@ html.has-cursor button {
     padding: 0.9rem 1.1rem;
     border-radius: 14px;
     background: rgba(248, 230, 215, 0.92);
-    backdrop-filter: blur(6px);
+    /* no backdrop-filter: behind a 92%-opaque card the blur was invisible, but it
+       made phones re-blur the live canvas under three cards every frame */
   }
   .help-card__n { font-size: 10px; }
   .help-card__title { font-size: 1.2rem; margin-top: 0.3rem; }

@@ -11,7 +11,7 @@ npm run build      # type-check + production build → dist/
 npm run preview    # serve the build
 ```
 
-Add `?static` to the URL to preview the no-WebGL fallback.
+Add `?static` to the URL to preview the no-WebGL fallback, `?perf` for the live performance overlay (FPS, frame time, draw calls, triangles, textures, programs, DPR), and `?tier=high|mid|low` to force a GPU quality preset.
 
 ---
 
@@ -67,11 +67,11 @@ Other tuning knobs:
 
 | What | Where |
 |---|---|
-| Camera weight (damping 0.075) and mouse parallax (±0.15) | `src/experience/Camera.ts` |
-| Scrub lag (1.2s), text-reveal timing, per-station signature moves | `src/scroll/MasterTimeline.ts` (`stationExtras`) |
+| Camera follow rate (`follow = 14`, an exponential damp: higher is tighter) and mouse parallax (±0.15) | `src/experience/Camera.ts` |
+| Text-reveal timing, per-station signature moves (the timeline is scrubbed 1:1 by Lenis, with no scrub lag) | `src/scroll/MasterTimeline.ts` (`stationExtras`) |
 | Room props and layout | `src/experience/rooms/*.ts` |
-| Lenis smoothing (`lerp 0.08`) and the nav fly duration (2.2s, expo in-out) | `src/main.ts` |
-| Mobile and reduced-motion quality switches | `src/experience/globals.ts` |
+| Lenis smoothing (`lerp 0.1`, the only scroll smoother) and the nav fly duration (2.2s, expo in-out) | `src/main.ts` |
+| Mobile, reduced-motion and GPU-tier quality switches (DPR cap, shadow size, MSAA) | `src/experience/globals.ts` |
 
 ## 4. How it fits together
 
@@ -99,7 +99,7 @@ src/
 ```
 
 - **One timeline, one scene.** The `<canvas>` and the text overlay are both `position: fixed`. The tall `#scroll-track` div feeds ScrollTrigger, and every value (camera, light, fog, text) is a scrubbed tween on the same master timeline, so text and 3D can't drift apart. Scrolling up reverses everything.
-- **Rails.** The camera sits on a CatmullRom (centripetal) curve. Each station contributes an `arrive` and a `leave` point, and the timeline tweens the rail parameter between them. Corridors use the `cine` ease (`0.65, 0, 0.35, 1`), and dwells use `sine.inOut`. The real camera is then damped toward the rail every frame.
+- **Rails.** The camera sits on a CatmullRom (centripetal) curve. Each station contributes an `arrive` and a `leave` point, and the timeline tweens the rail parameter between them. Corridors use the `cine` ease (`0.65, 0, 0.35, 1`), and dwells use `sine.inOut`. The real camera then follows the rail with a short exponential damp (about 70ms time constant); the cinematic weight is in the eases, not in input lag.
 - **Help cards** are real 3D rounded boxes. Their HTML twins (title, copy and "Ask me" link) are positioned each frame by projecting the card face to the screen, so the text stays crisp and accessible while the card tilts toward your cursor. On mobile the twins become a stacked list.
 - **Lights.** The key light's shadow frustum follows the look target, so shadows stay tight. Shadow maps re-render every frame while the camera moves and every fourth frame when it's slow. Image planes are unlit, but they're tinted by the rig colour, so the grade still evolves across the journey.
 
@@ -117,7 +117,8 @@ src/
 ## 6. QA hooks (browser console)
 
 ```js
-__perf()          // { calls, triangles, textures, textureMB, programs }
+__perf()          // { fps, frameMs, calls, triangles, textures, programs, dpr, tier, … }
+await __perfRun() // scripted top-to-bottom scroll: avg fps, p95/max frame, frames over 32ms, programs before/after
 __fly('work')     // fly the camera to a station
 ```
 

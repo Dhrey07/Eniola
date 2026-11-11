@@ -24,10 +24,11 @@ export class SayHiRoom extends Room {
   update(f: FrameContext) {
     super.update(f);
     const g = f.light.glow;
-    this.beacons.forEach((b, i) => {
+    for (let i = 0; i < this.beacons.length; i++) {
+      const b = this.beacons[i];
       b.material.opacity = Math.max(0, g - 0.2) * 0.7 * (0.75 + 0.25 * Math.sin(f.time * 1.2 + i));
       b.scale.setScalar(5 + g * 9);
-    });
+    }
   }
 }
 

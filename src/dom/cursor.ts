@@ -36,12 +36,27 @@ export function initCursor(root: HTMLElement) {
   };
   const onLeave = () => root.classList.remove('is-visible');
 
+  // same ticker as the renderer; transforms are only written while something is moving
+  let dotX = NaN;
+  let dotY = NaN;
+  let settled = false;
   const tick = () => {
+    if (pos.x !== dotX || pos.y !== dotY) {
+      dotX = pos.x;
+      dotY = pos.y;
+      setDot.x(dotX);
+      setDot.y(dotY);
+      settled = false;
+    }
+    if (settled) return;
     const k = 1 - Math.pow(0.82, gsap.ticker.deltaRatio());
     ringPos.x += (pos.x - ringPos.x) * k;
     ringPos.y += (pos.y - ringPos.y) * k;
-    setDot.x(pos.x);
-    setDot.y(pos.y);
+    if (Math.abs(pos.x - ringPos.x) < 0.01 && Math.abs(pos.y - ringPos.y) < 0.01) {
+      ringPos.x = pos.x;
+      ringPos.y = pos.y;
+      settled = true;
+    }
     setRing.x(ringPos.x);
     setRing.y(ringPos.y);
   };
@@ -65,14 +80,26 @@ export function initMagnetic(scope: ParentNode, radius = 80, strength = 0.35) {
     x: gsap.quickTo(el, 'x', { duration: 0.6, ease: 'power3.out' }),
     y: gsap.quickTo(el, 'y', { duration: 0.6, ease: 'power3.out' }),
   }));
+  // pointermove can fire several times per frame: record it, and measure once per tick
+  let px = 0;
+  let py = 0;
+  let dirty = false;
   const onMove = (e: PointerEvent) => {
-    for (const m of movers) {
+    px = e.clientX;
+    py = e.clientY;
+    dirty = true;
+  };
+  const tick = () => {
+    if (!dirty) return;
+    dirty = false;
+    for (let i = 0; i < movers.length; i++) {
+      const m = movers[i];
       const r = m.el.getBoundingClientRect();
       if (!r.width) continue;
       const cx = r.left + r.width / 2;
       const cy = r.top + r.height / 2;
-      const dx = e.clientX - cx;
-      const dy = e.clientY - cy;
+      const dx = px - cx;
+      const dy = py - cy;
       // distance to the element's edge, not its centre
       const ex = Math.max(0, Math.abs(dx) - r.width / 2);
       const ey = Math.max(0, Math.abs(dy) - r.height / 2);
@@ -85,6 +112,10 @@ export function initMagnetic(scope: ParentNode, radius = 80, strength = 0.35) {
       }
     }
   };
-  window.addEventListener('pointermove', onMove);
-  return () => window.removeEventListener('pointermove', onMove);
+  window.addEventListener('pointermove', onMove, { passive: true });
+  gsap.ticker.add(tick);
+  return () => {
+    window.removeEventListener('pointermove', onMove);
+    gsap.ticker.remove(tick);
+  };
 }

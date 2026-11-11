@@ -8,6 +8,7 @@ import { buildOverlay, buildNav, buildProgress } from './dom/overlay';
 import { initCursor, initMagnetic } from './dom/cursor';
 import { runLoader } from './dom/loader';
 import { toast } from './dom/toast';
+import { initPerfOverlay } from './dom/perf';
 import { buildMaster, type Master } from './scroll/MasterTimeline';
 import { standins } from './experience/globals';
 import { content, site, stationOrder, type StationId } from './content';
@@ -65,17 +66,23 @@ function boot() {
   // ── 3D ──────────────────────────────────────────────────
   const exp = new Experience($<HTMLCanvasElement>('#webgl'));
   exp.world.help.bind(helpCards);
-  exp.start();
 
-  // ── smooth scroll (Lenis ↔ GSAP ticker) ─────────────────
+  // ── smooth scroll: Lenis is the ONLY scroll smoother ────
   const reducedMQ = matchMedia('(prefers-reduced-motion: reduce)');
-  const lenis = new Lenis({ lerp: reducedMQ.matches ? 1 : 0.08, smoothWheel: !reducedMQ.matches });
+  const lenis = new Lenis({
+    lerp: reducedMQ.matches ? 1 : 0.1, // responsive but silky
+    smoothWheel: !reducedMQ.matches,
+    wheelMultiplier: 1,
+    syncTouch: false, // native momentum on touch devices
+  });
   lenis.on('scroll', ScrollTrigger.update);
   lenis.on('scroll', (l: Lenis) => exp.setScrollVelocity(l.velocity));
-  const raf = (t: number) => lenis.raf(t * 1000);
-  gsap.ticker.add(raf);
   gsap.ticker.lagSmoothing(0);
   lenis.stop();
+
+  // pointer activity wakes the renderer from its idle half-rate (card tilt, sheen sweeps)
+  const onPointer = () => exp.keepAwake(1.5);
+  window.addEventListener('pointermove', onPointer, { passive: true });
 
   // ── master timeline (rebuilt per media condition) ───────
   let master!: Master;
@@ -84,25 +91,39 @@ function boot() {
   mm.add({ any: 'all', reduce: '(prefers-reduced-motion: reduce)', mobile: '(max-width: 767px)' }, (ctx) => {
     const c = ctx.conditions as { reduce: boolean; mobile: boolean };
     reduced = c.reduce;
-    exp.rig.damping = c.reduce ? 1 : 0.075;
+    exp.rig.follow = c.reduce ? Infinity : 14;
     master = buildMaster(exp, dom, { reduced: c.reduce, scrollScale: c.mobile ? 0.7 : 1 });
   });
 
   // ── UI tick: progress rail, active nav ──────────────────
   const navLinks = Array.from(document.querySelectorAll<HTMLElement>('[data-nav]'));
   let lastIdx = -1;
+  let lastP = -1;
   const ui = () => {
     if (!master) return;
-    const time = master.tl.time();
-    const idx = master.stationAt(time);
-    setProgress(master.tl.progress(), idx);
+    const p = master.tl.progress();
+    if (p === lastP) return; // nothing moved: no DOM writes
+    lastP = p;
+    const idx = master.stationAt(master.tl.time());
+    setProgress(p, idx);
     if (idx !== lastIdx) {
       lastIdx = idx;
       const id = stationOrder[idx];
       navLinks.forEach((a) => (a.dataset.nav === id ? a.setAttribute('aria-current', 'true') : a.removeAttribute('aria-current')));
     }
   };
-  gsap.ticker.add(ui);
+
+  // ── ONE loop: gsap.ticker drives Lenis → (ScrollTrigger scrubs the timeline
+  //    inside lenis.raf) → 3D update + render → UI, in that order, so a wheel
+  //    event reaches the screen in the same frame ──────────
+  const perf = initPerfOverlay(() => exp.stats());
+  const frame = (t: number, deltaMs: number) => {
+    lenis.raf(t * 1000);
+    exp.update(deltaMs);
+    ui();
+    perf?.(t * 1000);
+  };
+  gsap.ticker.add(frame);
 
   // ── camera fly-to (nav, CTAs, keyboard) ─────────────────
   const flyTo = (id: StationId, focus = false) => {
@@ -154,7 +175,9 @@ function boot() {
   const heroRoom = exp.world.rooms[0];
   heroRoom.state.reveal = 0;
 
-  runLoader($('#loader'), exp.assets).then(() => {
+  // the loader holds at 100 until every texture is on the GPU and every shader is compiled
+  const warmed = exp.assets.ready.then(() => exp.prewarm()).catch((e) => console.warn('[prewarm]', e));
+  runLoader($('#loader'), exp.assets, warmed).then(() => {
     const intro = gsap.timeline({ defaults: { ease: 'expo.out' } });
     intro
       .to(exp.world.veilUniform, { value: 0, duration: reduced ? 0.6 : 2.0, ease: 'sine.inOut' }, 0)
@@ -175,18 +198,65 @@ function boot() {
   // ── QA hooks (console): __perf(), __fly('work') ─────────
   const w = window as unknown as Record<string, unknown>;
   w.__perf = () => exp.stats();
+  w.__perfRun = (seconds = 30) => perfRun(exp, lenis, seconds);
   w.__fly = (id: StationId) => flyTo(id);
   w.__app = { exp, lenis, get master() { return master; } };
 
   cleanups.push(() => {
     document.removeEventListener('click', onFly);
     window.removeEventListener('keydown', onKey);
-    gsap.ticker.remove(raf);
-    gsap.ticker.remove(ui);
+    gsap.ticker.remove(frame);
+    window.removeEventListener('pointermove', onPointer);
+    document.getElementById('perf')?.remove();
     mm.revert();
     ScrollTrigger.getAll().forEach((t) => t.kill());
     lenis.destroy();
     exp.destroy();
+  });
+}
+
+/**
+ * QA: scroll top → bottom at a constant speed and report frame statistics.
+ * Run `await __perfRun()` in the console (same call before/after a change).
+ */
+function perfRun(exp: Experience, lenis: Lenis, seconds: number) {
+  return new Promise((resolve) => {
+    lenis.scrollTo(0, { immediate: true, force: true });
+    const dts: number[] = [];
+    const info = exp.renderer.info;
+    const programs0 = info.programs?.length ?? 0;
+    let calls = 0;
+    let callsMax = 0;
+    let last = 0;
+    let done = false;
+    const tick = (now: number) => {
+      if (last) dts.push(now - last);
+      last = now;
+      calls += info.render.calls;
+      callsMax = Math.max(callsMax, info.render.calls);
+      if (!done) return requestAnimationFrame(tick);
+      dts.sort((a, b) => a - b);
+      const n = dts.length;
+      const avg = dts.reduce((a, b) => a + b, 0) / n;
+      resolve({
+        frames: n,
+        avgFps: +(1000 / avg).toFixed(1),
+        avgMs: +avg.toFixed(2),
+        p95Ms: +dts[Math.floor(n * 0.95)].toFixed(2),
+        maxMs: +dts[n - 1].toFixed(1),
+        over32ms: dts.filter((d) => d > 32).length,
+        over50ms: dts.filter((d) => d > 50).length,
+        callsAvg: Math.round(calls / (n + 1)),
+        callsMax,
+        programsStart: programs0,
+        programsEnd: info.programs?.length ?? 0,
+        dpr: exp.renderer.getPixelRatio(),
+      });
+    };
+    setTimeout(() => {
+      requestAnimationFrame(tick);
+      lenis.scrollTo(lenis.limit, { duration: seconds, easing: (t) => t, force: true, onComplete: () => setTimeout(() => (done = true), 600) });
+    }, 800);
   });
 }
 

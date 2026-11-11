@@ -59,9 +59,7 @@ export class FunRoom extends Room {
     const spin = this.state.extra * Math.PI * 1.2 + (quality.reduced ? 0 : f.time * 0.03);
     this.helix.rotation.y = spin;
     // carousel: frames orbit, but keep turning to face the camera side (+Z), with a slight lean
-    this.frames.forEach((fr, i) => {
-      fr.rotation.y = -spin + Math.sin(spin + i) * 0.25;
-    });
+    for (let i = 0; i < this.frames.length; i++) this.frames[i].rotation.y = -spin + Math.sin(spin + i) * 0.25;
     this.feed.offset.y -= f.dt * (quality.reduced ? 0 : 0.09);
     this.phone.position.y = 1.9 + Math.sin(f.time * 1.4) * 0.04;
   }

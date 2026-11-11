@@ -256,8 +256,6 @@ export const content = {
     email: { label: site.email, href: `mailto:${site.email}` },
     links: [
       { label: 'LinkedIn', href: 'https://www.linkedin.com/in/eniolaalawode/' },
-      { label: 'Twitter', href: 'https://twitter.com' },
-      { label: 'Instagram', href: 'https://instagram.com' },
     ],
     copiedToast: 'Email copied: hello@eniola.co',
   },

@@ -47,16 +47,22 @@ const OUT_INV = [
   [0.0592687, 0.9314365, 0.0092949],
   [0.0059619, 0.063929, 0.9301184],
 ];
-const mul = (m: number[][], v: number[]) => m.map((r) => r[0] * v[0] + r[1] * v[1] + r[2] * v[2]);
-function inverseACES(c: number[], exposure: number) {
-  const y = mul(OUT_INV, c).map((v) => Math.min(0.985, Math.max(0, v)));
-  const v = y.map((y) => {
-    const A = 1 - 0.983729 * y;
-    const B = 0.0245786 - 0.432951 * y;
-    const C = -(0.000090537 + 0.238081 * y);
-    return (-B + Math.sqrt(Math.max(B * B - 4 * A * C, 0))) / (2 * A);
-  });
-  return mul(IN_INV, v).map((x) => (x * 0.6) / exposure);
+const row = (m: number[][], i: number, x: number, y: number, z: number) => m[i][0] * x + m[i][1] * y + m[i][2] * z;
+const fitInv = (v: number) => {
+  const y = Math.min(0.985, Math.max(0, v));
+  const A = 1 - 0.983729 * y;
+  const B = 0.0245786 - 0.432951 * y;
+  const C = -(0.000090537 + 0.238081 * y);
+  return (-B + Math.sqrt(Math.max(B * B - 4 * A * C, 0))) / (2 * A);
+};
+/** writes into `out` (runs every frame: no allocations) */
+function inverseACES(r: number, g: number, b: number, exposure: number, out: THREE.Color) {
+  const v0 = fitInv(row(OUT_INV, 0, r, g, b));
+  const v1 = fitInv(row(OUT_INV, 1, r, g, b));
+  const v2 = fitInv(row(OUT_INV, 2, r, g, b));
+  out.r = (row(IN_INV, 0, v0, v1, v2) * 0.6) / exposure;
+  out.g = (row(IN_INV, 1, v0, v1, v2) * 0.6) / exposure;
+  out.b = (row(IN_INV, 2, v0, v1, v2) * 0.6) / exposure;
 }
 
 /**
@@ -128,10 +134,9 @@ export class Lights {
       this.bgLuminance = 1;
       return;
     }
-    const x = inverseACES([target.r, target.g, target.b], exposure);
-    bg.setRGB(x[0], x[1], x[2]);
+    inverseACES(target.r, target.g, target.b, exposure, bg);
     fog.copy(bg);
-    this.bgLuminance = 0.2126 * x[0] + 0.7152 * x[1] + 0.0722 * x[2];
+    this.bgLuminance = 0.2126 * bg.r + 0.7152 * bg.g + 0.0722 * bg.b;
   }
 
   update(camera: THREE.Camera, look: THREE.Vector3, time: number) {

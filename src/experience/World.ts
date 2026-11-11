@@ -33,7 +33,7 @@ export class World {
   veil: THREE.Mesh<THREE.BufferGeometry, THREE.ShaderMaterial>;
   help: HelpRoom;
 
-  constructor(private scene: THREE.Scene, private ctx: RoomContext, private rig: CameraRig, private lights: Lights) {
+  constructor(private scene: THREE.Scene, ctx: RoomContext, private rig: CameraRig, private lights: Lights) {
     // ── floor ──────────────────────────────────────────────
     this.floor = new THREE.Mesh(
       new THREE.PlaneGeometry(520, 520),
@@ -113,7 +113,7 @@ export class World {
         uniforms: {
           uTime: globals.uTime,
           uSize: { value: 2.0 },
-          uPixelRatio: { value: quality.dpr },
+          uPixelRatio: globals.uPixelRatio,
           uDrift: { value: quality.reduced ? 0 : 1 },
           uColor: { value: new THREE.Color('#b98a6c') },
           uOpacity: { value: 0.35 },
@@ -159,25 +159,62 @@ export class World {
   /** index of the station the camera is nearest to (by rail parameter) */
   currentStation() {
     const t = this.rig.state.t;
+    const rail = this.rig.railT;
     let best = 0;
     let bd = Infinity;
-    this.rig.railT.forEach((r, i) => {
-      const d = Math.min(Math.abs(t - r.arrive), Math.abs(t - r.leave));
+    for (let i = 0; i < rail.length; i++) {
+      const d = Math.min(Math.abs(t - rail[i].arrive), Math.abs(t - rail[i].leave));
       if (d < bd) {
         bd = d;
         best = i;
       }
-    });
+    }
     return best;
   }
 
-  update(f: FrameContext) {
-    const cur = this.currentStation();
-    // lazy GPU upload: textures for rooms within two stations of the camera
-    for (let i = Math.max(0, cur - 2); i <= Math.min(this.rooms.length - 1, cur + 2); i++) {
-      this.ctx.assets.upload(this.ctx.renderer, this.rooms[i].textures);
+  /** every texture any room uses (uploaded to the GPU once, behind the loader) */
+  allTextures() {
+    const set = new Set<THREE.Texture>();
+    for (const r of this.rooms) for (const t of r.textures) set.add(t);
+    return [...set];
+  }
+
+  /** measure each room once so `cull()` can test it against the fog */
+  initCulling() {
+    this.scene.updateMatrixWorld(true);
+    for (const r of this.rooms) r.computeBounds();
+  }
+
+  /** show everything (shader/texture pre-warm) */
+  showAll() {
+    for (const r of this.rooms) r.setCulled(false);
+  }
+
+  /**
+   * Hide a room only when it cannot contribute a visible pixel: it is more
+   * than two stations away AND the fog between it and the camera leaves it
+   * under 0.1% visible (less than half an 8-bit step). Rooms one or two
+   * stations ahead always stay, and the Say-hi pull-back (thin fog) keeps
+   * the whole corridor, so no frame changes.
+   */
+  private cull(camera: THREE.Camera, cur: number) {
+    const density = (this.scene.fog as THREE.FogExp2).density;
+    for (let i = 0; i < this.rooms.length; i++) {
+      const r = this.rooms[i];
+      if (!r.hasBounds) continue;
+      let hide = false;
+      if (Math.abs(i - cur) > 2) {
+        const d = Math.max(0, camera.position.distanceTo(r.bounds.center) - r.bounds.radius) * density;
+        hide = d * d > 6.9; // exp(-6.9) ≈ 0.001 transmittance
+      }
+      r.setCulled(hide);
     }
-    for (const r of this.rooms) r.update(f);
+  }
+
+  update(f: FrameContext) {
+    const rooms = this.rooms;
+    for (let i = 0; i < rooms.length; i++) rooms[i].update(f);
+    this.cull(f.camera, this.currentStation());
     this.path.material.opacity = 0.18 + this.lights.state.glow * 0.7;
     this.veil.material.uniforms.uResolution.value.set(f.width, f.height);
   }

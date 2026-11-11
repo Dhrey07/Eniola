@@ -3,11 +3,13 @@ import { buildRailPoints } from '../scroll/sections';
 import { quality } from './globals';
 
 const v3 = (a: number[]) => new THREE.Vector3(a[0], a[1], a[2]);
+const PARALLAX_RATE = -Math.log(1 - 0.05) * 60;
 
 /**
  * CatmullRom position rail + look-at rail. The master timeline writes
  * `state.t` (rail parameter), `state.fov` and `state.roll`; this class
- * damps the real camera toward those values every frame.
+ * follows those values with a short exponential damp every frame. The
+ * cinematic weight lives in the timeline eases, not in input lag.
  */
 export class CameraRig {
   camera: THREE.PerspectiveCamera;
@@ -17,7 +19,8 @@ export class CameraRig {
   state = { t: 0, fov: 35, roll: 0 };
   /** 1 = pulled far back (intro), 0 = on the rail */
   intro = { v: 1 };
-  damping = quality.reduced ? 1 : 0.075;
+  /** rail-follow rate in 1/s (exponential, frame-rate independent); Infinity = snap (reduced motion) */
+  follow = quality.reduced ? Infinity : 14;
   lookAhead = 0.0015;
   speed = 0;
 
@@ -57,11 +60,12 @@ export class CameraRig {
     this.positionRail.getPoint(t, this.tmpPos);
     this.targetRail.getPoint(Math.min(1, t + this.lookAhead), this.tmpLook);
 
-    // frame-rate independent damping (0.075 at 60fps)
-    const k = this.damping >= 1 ? 1 : 1 - Math.pow(1 - this.damping, dt * 60);
+    // one light, frame-rate independent damp: the camera settles ~200ms after the scroll does
+    const k = this.follow === Infinity ? 1 : 1 - Math.exp(-this.follow * dt);
     this.pos.lerp(this.tmpPos, k);
     this.look.lerp(this.tmpLook, k);
-    this.mouse.lerp(this.mouseTarget, 1 - Math.pow(1 - 0.05, dt * 60));
+    // mouse parallax keeps its soft float (same rate as before: 0.05 per 60fps frame)
+    this.mouse.lerp(this.mouseTarget, 1 - Math.exp(-PARALLAX_RATE * dt));
 
     const cam = this.camera;
     cam.position.copy(this.pos).addScaledVector(this.introOffset, this.intro.v);

@@ -55,6 +55,31 @@ export class Room {
     return this.planes.flatMap((p) => p.textures);
   }
 
+  // ── culling (World decides when; lights are never hidden so the light
+  //    count, and with it every lit shader program, stays constant) ──
+  private cullSet: THREE.Object3D[] | null = null;
+  private culled = false;
+  /** world-space bounds of everything this room draws (padded for scale tweens, bend and drift) */
+  bounds = new THREE.Sphere();
+  hasBounds = false;
+
+  computeBounds() {
+    const box = new THREE.Box3();
+    box.expandByObject(this.group).expandByObject(this.detached);
+    this.hasBounds = !box.isEmpty();
+    if (this.hasBounds) {
+      box.getBoundingSphere(this.bounds);
+      this.bounds.radius = this.bounds.radius * 1.4 + 3;
+    }
+    this.cullSet = [...this.group.children, ...this.detached.children].filter((o) => !(o as THREE.Light).isLight);
+  }
+
+  setCulled(v: boolean) {
+    if (v === this.culled || !this.cullSet) return;
+    this.culled = v;
+    for (let i = 0; i < this.cullSet.length; i++) this.cullSet[i].visible = !v;
+  }
+
   update(_f: FrameContext) {
     this.group.scale.setScalar(this.state.scale);
     for (const p of this.planes) p.reveal.value = this.state.reveal;

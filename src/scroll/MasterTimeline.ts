@@ -49,7 +49,8 @@ export function buildMaster(exp: Experience, dom: Record<StationId, StationDom>,
       trigger: track,
       start: 'top top',
       end: 'bottom bottom',
-      scrub: reduced ? true : 1.2,
+      // follows Lenis directly: no second smoothing pass on top of the scroll smoother
+      scrub: true,
       onUpdate: (self) => opts.onUpdate?.(self.progress),
     },
   });
@@ -133,10 +134,9 @@ export function buildMaster(exp: Experience, dom: Record<StationId, StationDom>,
     labelScroll: (id) => st.labelToScroll(id),
     stationAt: (time) => {
       let idx = 0;
-      times.forEach((t, i) => {
-        const lead = (stations[i].corridor * k) / 2;
-        if (time >= t - lead) idx = i;
-      });
+      for (let i = 0; i < times.length; i++) {
+        if (time >= times[i] - (stations[i].corridor * k) / 2) idx = i;
+      }
       return idx;
     },
   };
@@ -204,7 +204,24 @@ function stationExtras(
       const r = d.parts.workRight as HTMLElement;
       const at = T - corr * 0.35;
       tl.fromTo(l, { xPercent: -35, scale: 1.12, opacity: 0 }, { xPercent: 0, scale: 1, opacity: 1, ease: 'expo.out', duration: dw * 0.55 }, at);
-      tl.fromTo(r, { xPercent: 35, scale: 0.88, opacity: 0, filter: 'blur(8px)' }, { xPercent: 0, scale: 1, opacity: 1, filter: 'blur(0px)', ease: 'expo.out', duration: dw * 0.6 }, at + dw * 0.08);
+      // the blur only costs while the headline is actually racking in: once it lands
+      // (blur 0, identical to no filter) the filter layer is dropped
+      tl.fromTo(
+        r,
+        { xPercent: 35, scale: 0.88, opacity: 0, filter: 'blur(8px)' },
+        {
+          xPercent: 0,
+          scale: 1,
+          opacity: 1,
+          filter: 'blur(0px)',
+          ease: 'expo.out',
+          duration: dw * 0.6,
+          onUpdate(this: gsap.core.Tween) {
+            if (this.progress() === 1) r.style.filter = 'none';
+          },
+        },
+        at + dw * 0.08
+      );
       break;
     }
     case 'fun': {

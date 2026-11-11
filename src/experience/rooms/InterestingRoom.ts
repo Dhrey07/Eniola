@@ -74,7 +74,7 @@ export class InterestingRoom extends Room {
         uniforms: {
           uTime: globals.uTime,
           uSize: { value: 1.4 },
-          uPixelRatio: { value: quality.dpr },
+          uPixelRatio: globals.uPixelRatio,
           uDrift: { value: quality.reduced ? 0 : 0.25 },
           uColor: { value: new THREE.Color('#c99a52') },
           uOpacity: { value: 0 },
@@ -90,8 +90,12 @@ export class InterestingRoom extends Room {
     // sweep: scroll-driven (state.extra) + slow breathing
     const a = -1.1 + this.state.extra * 2.2 + Math.sin(f.time * 0.6) * 0.25;
     this.spot.position.set(Math.sin(a) * 3.2, 4.6, 1.8 + Math.cos(a) * 1.2);
-    this.spot.intensity = 140 * k;
-    this.spot.visible = k > 0.01;
+    // below the old visibility threshold the spot contributes nothing (intensity 0) but
+    // stays in the light list: toggling `visible` changed the light count and made
+    // three swap every lit material to a different shader program mid-scroll
+    const lit = k > 0.01;
+    this.spot.intensity = lit ? 140 * k : 0;
+    this.spot.shadow.autoUpdate = lit;
     this.ring.rotation.y = (quality.reduced ? 0 : f.time * 0.25) + this.state.extra * 1.5;
     this.motes.material.uniforms.uOpacity.value = 0.8 * k;
   }
